@@ -12,6 +12,7 @@ import { modal } from './modal';
 import { messageBox } from './messageBox';
 import { MessageAction } from './MessageAction';
 import { RoomManager } from './RoomManager';
+import { drawDoughnutChart } from './chartHandler';
 
 export const popover = {
 	renderedPopover: null,
@@ -56,6 +57,17 @@ Template.popover.onRendered(function() {
 	const { offsetVertical = 0, offsetHorizontal = 0 } = this.data;
 	const { activeElement } = this.data;
 	const popoverContent = this.firstNode.children[0];
+
+	// draw doghnut graph if column type is graph
+	this.data.columns.forEach((column, index) => {
+		if (column.type === 'graph') {
+			const canvas = document.createElement('canvas');
+			canvas.id = `popover-graph-${ index }`;
+			popoverContent.children[index].appendChild(canvas);
+			drawDoughnutChart(canvas, column.title, null, column.dataLabels, column.dataPoints);
+		}
+	});
+
 	const position = _.throttle(() => {
 
 		const direction = typeof this.data.direction === 'function' ? this.data.direction() : this.data.direction;

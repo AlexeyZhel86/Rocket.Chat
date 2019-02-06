@@ -2,9 +2,8 @@ import { Meteor } from 'meteor/meteor';
 import { ReactiveVar } from 'meteor/reactive-var';
 import { FlowRouter } from 'meteor/kadira:flow-router';
 import { Template } from 'meteor/templating';
-import { popover } from 'meteor/rocketchat:ui-utils';
-import { t, getUserPreference, handleError } from 'meteor/rocketchat:utils';
-import { AccountBox, menu, SideNav } from 'meteor/rocketchat:ui-utils';
+import { AccountBox, menu, popover, SideNav } from 'meteor/rocketchat:ui-utils';
+import { getUserPreference, handleError, t } from 'meteor/rocketchat:utils';
 import { callbacks } from 'meteor/rocketchat:callbacks';
 import { settings } from 'meteor/rocketchat:settings';
 import { hasAtLeastOnePermission } from 'meteor/rocketchat:authorization';
@@ -13,6 +12,33 @@ const setStatus = (status) => {
 	AccountBox.setStatus(status);
 	callbacks.run('userStatusManuallySet', status);
 	popover.close();
+};
+
+const dataMoodClicks = {
+	happy: 0,
+	sad: 0,
+	uncertain: 0,
+	confused: 0,
+};
+
+const updateMoodClick = (key) => {
+	dataMoodClicks[key] += 1;
+	popover.close();
+};
+
+const getMoodDataPoints = () => {
+	const points = [
+		dataMoodClicks.happy,
+		dataMoodClicks.sad,
+		dataMoodClicks.uncertain,
+		dataMoodClicks.confused,
+	];
+
+	if (points.reduce((accumulator, currentValue) => accumulator + currentValue) === 0) {
+		return [1, 1, 1, 1];
+	} else {
+		return points;
+	}
 };
 
 const viewModeIcon = {
@@ -68,175 +94,230 @@ export const toolbarSearch = {
 	},
 };
 
-const toolbarButtons = (user) => [{
-	name: t('Search'),
-	icon: 'magnifier',
-	action: () => {
-		toolbarSearch.show(false);
-	},
-},
-{
-	name: t('Directory'),
-	icon: 'discover',
-	action: () => {
-		menu.close();
-		FlowRouter.go('directory');
-	},
-},
-{
-	name: t('View_mode'),
-	icon: () => viewModeIcon[getUserPreference(user, 'sidebarViewMode') || 'condensed'],
-	action: (e) => {
-		const hideAvatarSetting = getUserPreference(user, 'sidebarHideAvatar');
-		const config = {
-			columns: [
-				{
-					groups: [
-						{
-							items: [
-								extendedViewOption(user),
-								{
-									icon: viewModeIcon.medium,
-									name: t('Medium'),
-									modifier: getUserPreference(user, 'sidebarViewMode') === 'medium' ? 'bold' : null,
-									action: () => {
-										Meteor.call('saveUserPreferences', { sidebarViewMode: 'medium' }, function(error) {
-											if (error) {
-												return handleError(error);
-											}
-										});
+const toolbarButtons = (user) => [
+	{
+		name: t('User Mood'),
+		icon: 'emoji-happy',
+		action: (e) => {
+			const config = {
+				popoverClass: 'sidebar-header',
+				columns: [
+					{
+						groups: [
+							{
+								title: t('User Mood'),
+								items: [
+									{
+										icon: 'emoji-happy',
+										name: t('Happy'),
+										action: () => updateMoodClick('happy'),
 									},
-								},
-								{
-									icon: viewModeIcon.condensed,
-									name: t('Condensed'),
-									modifier: getUserPreference(user, 'sidebarViewMode') === 'condensed' ? 'bold' : null,
-									action: () => {
-										Meteor.call('saveUserPreferences', { sidebarViewMode: 'condensed' }, function(error) {
-											if (error) {
-												return handleError(error);
-											}
-										});
+									{
+										icon: 'emoji-sad',
+										name: t('Sad'),
+										action: () => updateMoodClick('sad'),
 									},
-								},
-							],
-						},
-						{
-							items: [
-								{
-									icon: 'user-rounded',
-									name: hideAvatarSetting ? t('Show_Avatars') : t('Hide_Avatars'),
-									action: () => {
-										Meteor.call('saveUserPreferences', { sidebarHideAvatar: !hideAvatarSetting }, function(error) {
-											if (error) {
-												return handleError(error);
-											}
-										});
+									{
+										icon: 'emoji-uncertain',
+										name: t('Uncertain'),
+										action: () => updateMoodClick('uncertain'),
 									},
-								},
-							],
-						},
-					],
-				},
-			],
-			currentTarget: e.currentTarget,
-			offsetVertical: e.currentTarget.clientHeight + 10,
-		};
-
-		popover.open(config);
-	},
-},
-{
-	name: t('Sort'),
-	icon: 'sort',
-	action: (e) => {
-		const options = [];
-		const config = {
-			template: 'sortlist',
-			currentTarget: e.currentTarget,
-			data: {
-				options,
-			},
-			offsetVertical: e.currentTarget.clientHeight + 10,
-		};
-		popover.open(config);
-	},
-},
-{
-	name: t('Create_A_New_Channel'),
-	icon: 'edit-rounded',
-	condition: () => hasAtLeastOnePermission(['create-c', 'create-p']),
-	action: () => {
-		menu.close();
-		FlowRouter.go('create-channel');
-	},
-},
-{
-	name: t('Options'),
-	icon: 'menu',
-	condition: () => AccountBox.getItems().length || hasAtLeastOnePermission(['manage-emoji', 'manage-integrations', 'manage-oauth-apps', 'manage-own-integrations', 'manage-sounds', 'view-logs', 'view-privileged-setting', 'view-room-administration', 'view-statistics', 'view-user-administration']),
-	action: (e) => {
-		let adminOption;
-		if (hasAtLeastOnePermission(['manage-emoji', 'manage-integrations', 'manage-oauth-apps', 'manage-own-integrations', 'manage-sounds', 'view-logs', 'view-privileged-setting', 'view-room-administration', 'view-statistics', 'view-user-administration'])) {
-			adminOption = {
-				icon: 'customize',
-				name: t('Administration'),
-				type: 'open',
-				id: 'administration',
-				action: () => {
-					SideNav.setFlex('adminFlex');
-					SideNav.openFlex();
-					FlowRouter.go('admin-info');
-					popover.close();
-				},
+									{
+										icon: 'emoji-confused',
+										name: t('Confused'),
+										action: () => updateMoodClick('confused'),
+									},
+								],
+							},
+						],
+					},
+					{
+						type: 'graph',
+						title: t('Mood Click Graph'),
+						dataLabels: [
+							`${ t('Happy') }: ${ dataMoodClicks.happy }`,
+							`${ t('Sad') }: ${ dataMoodClicks.sad }`,
+							`${ t('Uncertain') }: ${ dataMoodClicks.uncertain }`,
+							`${ t('Confused') }: ${ dataMoodClicks.confused }`,
+						],
+						dataPoints: getMoodDataPoints(),
+					},
+				],
+				currentTarget: e.currentTarget,
+				offsetVertical: e.currentTarget.clientHeight + 10,
 			};
-		}
-
-		const config = {
-			popoverClass: 'sidebar-header',
-			columns: [
-				{
-					groups: [
-						{
-							items: AccountBox.getItems().map((item) => {
-								let action;
-
-								if (item.href) {
-									action = () => {
-										FlowRouter.go(item.href);
-										popover.close();
-									};
-								}
-
-								if (item.sideNav) {
-									action = () => {
-										SideNav.setFlex(item.sideNav);
-										SideNav.openFlex();
-										popover.close();
-									};
-								}
-
-								return {
-									icon: item.icon,
-									name: t(item.name),
-									type: 'open',
-									id: item.name,
-									href: item.href,
-									sideNav: item.sideNav,
-									action,
-								};
-							}).concat([adminOption]),
-						},
-					],
-				},
-			],
-			currentTarget: e.currentTarget,
-			offsetVertical: e.currentTarget.clientHeight + 10,
-		};
-
-		popover.open(config);
+			popover.open(config);
+		},
 	},
-}];
+	{
+		name: t('Search'),
+		icon: 'magnifier',
+		action: () => {
+			toolbarSearch.show(false);
+		},
+	},
+	{
+		name: t('Directory'),
+		icon: 'discover',
+		action: () => {
+			menu.close();
+			FlowRouter.go('directory');
+		},
+	},
+	{
+		name: t('View_mode'),
+		icon: () => viewModeIcon[getUserPreference(user, 'sidebarViewMode') || 'condensed'],
+		action: (e) => {
+			const hideAvatarSetting = getUserPreference(user, 'sidebarHideAvatar');
+			const config = {
+				columns: [
+					{
+						groups: [
+							{
+								items: [
+									extendedViewOption(user),
+									{
+										icon: viewModeIcon.medium,
+										name: t('Medium'),
+										modifier: getUserPreference(user, 'sidebarViewMode') === 'medium' ? 'bold' : null,
+										action: () => {
+											Meteor.call('saveUserPreferences', { sidebarViewMode: 'medium' }, function(error) {
+												if (error) {
+													return handleError(error);
+												}
+											});
+										},
+									},
+									{
+										icon: viewModeIcon.condensed,
+										name: t('Condensed'),
+										modifier: getUserPreference(user, 'sidebarViewMode') === 'condensed' ? 'bold' : null,
+										action: () => {
+											Meteor.call('saveUserPreferences', { sidebarViewMode: 'condensed' }, function(error) {
+												if (error) {
+													return handleError(error);
+												}
+											});
+										},
+									},
+								],
+							},
+							{
+								items: [
+									{
+										icon: 'user-rounded',
+										name: hideAvatarSetting ? t('Show_Avatars') : t('Hide_Avatars'),
+										action: () => {
+											Meteor.call('saveUserPreferences', { sidebarHideAvatar: !hideAvatarSetting }, function(error) {
+												if (error) {
+													return handleError(error);
+												}
+											});
+										},
+									},
+								],
+							},
+						],
+					},
+				],
+				currentTarget: e.currentTarget,
+				offsetVertical: e.currentTarget.clientHeight + 10,
+			};
+
+			popover.open(config);
+		},
+	},
+	{
+		name: t('Sort'),
+		icon: 'sort',
+		action: (e) => {
+			const options = [];
+			const config = {
+				template: 'sortlist',
+				currentTarget: e.currentTarget,
+				data: {
+					options,
+				},
+				offsetVertical: e.currentTarget.clientHeight + 10,
+			};
+			popover.open(config);
+		},
+	},
+	{
+		name: t('Create_A_New_Channel'),
+		icon: 'edit-rounded',
+		condition: () => hasAtLeastOnePermission(['create-c', 'create-p']),
+		action: () => {
+			menu.close();
+			FlowRouter.go('create-channel');
+		},
+	},
+	{
+		name: t('Options'),
+		icon: 'menu',
+		condition: () => AccountBox.getItems().length || hasAtLeastOnePermission(['manage-emoji', 'manage-integrations', 'manage-oauth-apps', 'manage-own-integrations', 'manage-sounds', 'view-logs', 'view-privileged-setting', 'view-room-administration', 'view-statistics', 'view-user-administration']),
+		action: (e) => {
+			let adminOption;
+			if (hasAtLeastOnePermission(['manage-emoji', 'manage-integrations', 'manage-oauth-apps', 'manage-own-integrations', 'manage-sounds', 'view-logs', 'view-privileged-setting', 'view-room-administration', 'view-statistics', 'view-user-administration'])) {
+				adminOption = {
+					icon: 'customize',
+					name: t('Administration'),
+					type: 'open',
+					id: 'administration',
+					action: () => {
+						SideNav.setFlex('adminFlex');
+						SideNav.openFlex();
+						FlowRouter.go('admin-info');
+						popover.close();
+					},
+				};
+			}
+
+			const config = {
+				popoverClass: 'sidebar-header',
+				columns: [
+					{
+						groups: [
+							{
+								items: AccountBox.getItems().map((item) => {
+									let action;
+
+									if (item.href) {
+										action = () => {
+											FlowRouter.go(item.href);
+											popover.close();
+										};
+									}
+
+									if (item.sideNav) {
+										action = () => {
+											SideNav.setFlex(item.sideNav);
+											SideNav.openFlex();
+											popover.close();
+										};
+									}
+
+									return {
+										icon: item.icon,
+										name: t(item.name),
+										type: 'open',
+										id: item.name,
+										href: item.href,
+										sideNav: item.sideNav,
+										action,
+									};
+								}).concat([adminOption]),
+							},
+						],
+					},
+				],
+				currentTarget: e.currentTarget,
+				offsetVertical: e.currentTarget.clientHeight + 10,
+			};
+
+			popover.open(config);
+		},
+	}];
 Template.sidebarHeader.helpers({
 	myUserInfo() {
 		const id = Meteor.userId();
@@ -247,9 +328,11 @@ Template.sidebarHeader.helpers({
 				status: 'online',
 			};
 		}
-		return id && Meteor.users.findOne(id, { fields: {
-			username: 1, status: 1,
-		} });
+		return id && Meteor.users.findOne(id, {
+			fields: {
+				username: 1, status: 1,
+			},
+		});
 	},
 	toolbarButtons() {
 		return toolbarButtons(Meteor.userId()).filter((button) => !button.condition || button.condition());
